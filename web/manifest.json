@@ -1,6 +1,6 @@
 {
-    "name": "overprep_ui",
-    "short_name": "overprep_ui",
+    "name": "Pan the Stock Manager",
+    "short_name": "Pan Stock Manager",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
