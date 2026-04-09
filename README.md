@@ -1,5 +1,4 @@
-# overprep_ui
-
+# Pan The Stock Manager
 A new Flutter project.
 
 ## Getting Started
