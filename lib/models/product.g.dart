@@ -16,6 +16,22 @@ class ProductAdapter extends TypeAdapter<Product> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+    Uint8List? imageBytes;
+    final imageField = fields[6];
+    if (imageField == null) {
+      imageBytes = null;
+    } else if (imageField is Uint8List) {
+      imageBytes = imageField;
+    } else if (imageField is String) {
+      try {
+        imageBytes = base64Decode(imageField);
+      } catch (_) {
+        imageBytes = null;
+      }
+    } else {
+      imageBytes = null;
+    }
+
     return Product(
       id: fields[0] as String,
       name: fields[1] as String,
@@ -23,7 +39,7 @@ class ProductAdapter extends TypeAdapter<Product> {
       stock: fields[3] as int,
       category: fields[4] as String,
       lowStockThreshold: fields[5] as int,
-      imageBytes: fields[6] as Uint8List?,
+      imageBytes: imageBytes,
     );
   }
 
