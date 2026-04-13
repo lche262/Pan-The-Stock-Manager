@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
@@ -16,6 +17,20 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static final RegExp _moneyPattern = RegExp(r'^\d+\.\d{2}$');
+
+  String _normalizeMoneyText(String value) {
+    final text = value.trim();
+    if (text.isEmpty) {
+      return text;
+    }
+    final parsed = double.tryParse(text);
+    if (parsed == null) {
+      return text;
+    }
+    return parsed.toStringAsFixed(2);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -113,6 +128,56 @@ class _HomeScreenState extends State<HomeScreen> {
     final stockController = TextEditingController();
     final categoryController = TextEditingController();
     final thresholdController = TextEditingController();
+    String? priceError;
+    String? stockError;
+    String? thresholdError;
+
+    String? validatePrice(String value) {
+      final text = value.trim();
+      if (text.isEmpty) {
+        return 'Price is required.';
+      }
+      if (!_moneyPattern.hasMatch(text)) {
+        return 'Use money format like 11.99.';
+      }
+      return null;
+    }
+
+    void normalizePriceInput() {
+      final normalized = _normalizeMoneyText(priceController.text);
+      if (normalized != priceController.text) {
+        priceController.text = normalized;
+        priceController.selection = TextSelection.collapsed(
+          offset: normalized.length,
+        );
+      }
+    }
+
+    String? validateStock(String value) {
+      final text = value.trim();
+      if (text.isEmpty) {
+        return 'Stock is required.';
+      }
+      final stock = int.tryParse(text);
+      if (stock == null) {
+        return 'Stock must be an integer.';
+      }
+      if (stock > 10000) {
+        return 'Stock must be 10000 or less.';
+      }
+      return null;
+    }
+
+    String? validateThreshold(String value) {
+      final text = value.trim();
+      if (text.isEmpty) {
+        return 'Low stock threshold is required.';
+      }
+      if (int.tryParse(text) == null) {
+        return 'Low stock threshold must be an integer.';
+      }
+      return null;
+    }
 
     Uint8List? selectedImageBytes;
     final imagePicker = ImagePicker();
@@ -159,13 +224,67 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 TextField(
                   controller: priceController,
-                  decoration: const InputDecoration(labelText: 'Price'),
-                  keyboardType: TextInputType.number,
+                  onTapOutside: (_) {
+                    normalizePriceInput();
+                    setState(() {
+                      priceError = null;
+                    });
+                  },
+                  onEditingComplete: () {
+                    normalizePriceInput();
+                    setState(() {
+                      priceError = null;
+                    });
+                  },
+                  onChanged: (value) {
+                    final dotCount = '.'.allMatches(value).length;
+                    if (dotCount > 1) {
+                      // Revert to the value without the extra dot
+                      final firstDot = value.indexOf('.');
+                      final corrected =
+                          value.substring(0, firstDot + 1) +
+                          value.substring(firstDot + 1).replaceAll('.', '');
+                      priceController.value = TextEditingValue(
+                        text: corrected,
+                        selection: TextSelection.collapsed(
+                          offset: corrected.length,
+                        ),
+                      );
+                      setState(() {
+                        priceError = 'Only one decimal point is allowed.';
+                      });
+                    } else if (priceError != null) {
+                      setState(() {
+                        priceError = null;
+                      });
+                    }
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Price',
+                    prefixText: r'$',
+                    hintText: '0.00',
+                    errorText: priceError,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                  ],
                 ),
                 TextField(
                   controller: stockController,
-                  decoration: const InputDecoration(labelText: 'Stock'),
+                  onChanged: (value) {
+                    setState(() {
+                      stockError = validateStock(value);
+                    });
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Stock',
+                    errorText: stockError,
+                  ),
                   keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 ),
                 TextField(
                   controller: categoryController,
@@ -173,10 +292,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 TextField(
                   controller: thresholdController,
-                  decoration: const InputDecoration(
+                  onChanged: (value) {
+                    setState(() {
+                      thresholdError = validateThreshold(value);
+                    });
+                  },
+                  decoration: InputDecoration(
                     labelText: 'Low Stock Threshold',
+                    errorText: thresholdError,
                   ),
                   keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 ),
               ],
             ),
@@ -188,13 +314,31 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             TextButton(
               onPressed: () {
+                final priceText = priceController.text.trim();
+                final stockText = stockController.text.trim();
+                final thresholdText = thresholdController.text.trim();
+                setState(() {
+                  priceError = validatePrice(priceText);
+                  stockError = validateStock(stockText);
+                  thresholdError = validateThreshold(thresholdText);
+                });
+
+                if (priceError != null ||
+                    stockError != null ||
+                    thresholdError != null) {
+                  return;
+                }
+
+                final stock = int.parse(stockText);
+                final lowStockThreshold = int.parse(thresholdText);
+
                 final product = Product(
                   id: DateTime.now().toString(),
                   name: nameController.text,
-                  price: double.parse(priceController.text),
-                  stock: int.parse(stockController.text),
+                  price: double.parse(priceText),
+                  stock: stock,
                   category: categoryController.text,
-                  lowStockThreshold: int.parse(thresholdController.text),
+                  lowStockThreshold: lowStockThreshold,
                   imageBytes: selectedImageBytes,
                 );
                 Provider.of<AppProvider>(
